@@ -1,5 +1,6 @@
 import { useLocalSearchParams, router } from 'expo-router';
 import { useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +24,7 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
   const deleteNote = useDeleteNote();
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
+  const [tagsText, setTagsText] = useState(note.tags.join(', '));
 
   const draft = useMemo<NoteDraft>(() => ({ title, content }), [content, title]);
   const autosave = useAutosave(
@@ -48,6 +50,38 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
         },
       },
     ]);
+  };
+
+  const saveTags = async () => {
+    const tags = [...new Set(tagsText.split(',').map((tag) => tag.trim()).filter(Boolean))];
+    if (tags.length > 20 || tags.some((tag) => tag.length > 30)) {
+      Alert.alert('Invalid tags', 'Use up to 20 tags, each no longer than 30 characters.');
+      setTagsText(note.tags.join(', '));
+      return;
+    }
+
+    if (tags.length === note.tags.length && tags.every((tag, index) => tag === note.tags[index])) {
+      return;
+    }
+
+    try {
+      await updateNote.mutateAsync({ tags });
+      setTagsText(tags.join(', '));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save tags.';
+      Alert.alert('Tags not saved', message);
+      setTagsText(note.tags.join(', '));
+    }
+  };
+
+  const toggleNoteFlag = async (field: 'isPinned' | 'isArchived') => {
+    try {
+      await updateNote.mutateAsync({ [field]: !note[field] });
+      await Haptics.selectionAsync();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update this note.';
+      Alert.alert('Update failed', message);
+    }
   };
 
   const statusText = {
@@ -98,6 +132,44 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
             multiline
             textAlignVertical="top"
           />
+          <View style={styles.organizationSection}>
+            <Text style={styles.sectionLabel}>Tags</Text>
+            <TextInput
+              accessibilityLabel="Note tags"
+              style={styles.tagsInput}
+              value={tagsText}
+              onChangeText={setTagsText}
+              onBlur={() => void saveTags()}
+              placeholder="Add tags separated by commas"
+              autoCapitalize="none"
+              returnKeyType="done"
+            />
+            <Text style={styles.helperText}>Separate tags with commas. Changes save when you leave this field.</Text>
+            <View style={styles.flagActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: note.isPinned }}
+                onPress={() => void toggleNoteFlag('isPinned')}
+                disabled={updateNote.isPending}
+                style={[styles.flagButton, note.isPinned && styles.activeFlagButton]}
+              >
+                <Text style={[styles.flagButtonText, note.isPinned && styles.activeFlagText]}>
+                  {note.isPinned ? 'Pinned' : 'Pin note'}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: note.isArchived }}
+                onPress={() => void toggleNoteFlag('isArchived')}
+                disabled={updateNote.isPending}
+                style={[styles.flagButton, note.isArchived && styles.activeArchiveButton]}
+              >
+                <Text style={[styles.flagButtonText, note.isArchived && styles.activeArchiveText]}>
+                  {note.isArchived ? 'Archived' : 'Archive note'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -220,6 +292,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 25,
     paddingVertical: 8,
+  },
+  organizationSection: {
+    marginTop: 24,
+    paddingTop: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e2e8f0',
+    gap: 10,
+  },
+  sectionLabel: {
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  tagsInput: {
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#334155',
+    fontSize: 14,
+  },
+  helperText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  flagActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 3,
+  },
+  flagButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  activeFlagButton: {
+    borderColor: '#facc15',
+    backgroundColor: '#fef9c3',
+  },
+  activeArchiveButton: {
+    borderColor: '#93c5fd',
+    backgroundColor: '#dbeafe',
+  },
+  flagButtonText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  activeFlagText: {
+    color: '#854d0e',
+  },
+  activeArchiveText: {
+    color: '#1d4ed8',
   },
   footer: {
     padding: 12,

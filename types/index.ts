@@ -11,3 +11,10 @@ export type Note = {
 };
 
 export type NoteDraft = Pick<Note, 'title' | 'content'>;
+
+export type NoteViewMode = 'all' | 'pinned' | 'archived';
+export type NoteSortOption = 'updatedAt_desc' | 'createdAt_desc' | 'title_asc';
+
+export type NotePatch = Partial<
+  Pick<Note, 'title' | 'content' | 'tags' | 'isPinned' | 'isArchived'>
+>;

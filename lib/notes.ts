@@ -1,16 +1,40 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
-import type { Note, NoteDraft } from '@/types';
+import type { Note, NoteDraft, NotePatch, NoteSortOption, NoteViewMode } from '@/types';
 
 export const notesQueryKey = ['notes'] as const;
 
-export function useNotes() {
+export type NotesFilters = {
+  view: NoteViewMode;
+  query: string;
+  tag?: string;
+  sort: NoteSortOption;
+};
+
+export function useNotes(filters: NotesFilters) {
   return useQuery({
-    queryKey: notesQueryKey,
+    queryKey: [...notesQueryKey, filters],
     queryFn: async () => {
-      const response = await api<{ notes: Note[] }>('/api/notes?limit=100');
+      const params = new URLSearchParams({
+        view: filters.view,
+        sort: filters.sort,
+        limit: '100',
+      });
+      if (filters.query) params.set('q', filters.query);
+      if (filters.tag) params.set('tag', filters.tag);
+      const response = await api<{ notes: Note[] }>(`/api/notes?${params.toString()}`);
       return response.notes;
+    },
+  });
+}
+
+export function useNoteTags() {
+  return useQuery({
+    queryKey: [...notesQueryKey, 'tags'],
+    queryFn: async () => {
+      const response = await api<{ tags: string[] }>('/api/notes/tags');
+      return response.tags;
     },
   });
 }
@@ -47,10 +71,10 @@ export function useUpdateNote(id: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (draft: NoteDraft) => {
+    mutationFn: async (patch: NotePatch) => {
       const response = await api<{ note: Note }>(`/api/notes/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(draft),
+        body: JSON.stringify(patch),
       });
       return response.note;
     },
