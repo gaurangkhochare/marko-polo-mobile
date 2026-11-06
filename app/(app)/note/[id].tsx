@@ -1,0 +1,248 @@
+import { useLocalSearchParams, router } from 'expo-router';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useNote, useDeleteNote, useUpdateNote } from '@/lib/notes';
+import { useAutosave } from '@/lib/useAutosave';
+import type { Note, NoteDraft } from '@/types';
+
+function NoteEditor({ id, note }: { id: string; note: Note }) {
+  const updateNote = useUpdateNote(id);
+  const deleteNote = useDeleteNote();
+  const [title, setTitle] = useState(note.title);
+  const [content, setContent] = useState(note.content);
+
+  const draft = useMemo<NoteDraft>(() => ({ title, content }), [content, title]);
+  const autosave = useAutosave(
+    draft,
+    (nextDraft) => updateNote.mutateAsync(nextDraft),
+  );
+
+  const confirmDelete = () => {
+    Alert.alert('Delete note?', 'This note will be permanently deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await autosave.cancel();
+            await deleteNote.mutateAsync(id);
+            router.replace('/(app)');
+          })().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Could not delete the note.';
+            Alert.alert('Delete failed', message);
+          });
+        },
+      },
+    ]);
+  };
+
+  const statusText = {
+    saved: 'Saved',
+    saving: 'Saving...',
+    unsaved: 'Unsaved changes',
+    error: 'Could not save. Check connection and edit to retry.',
+  }[autosave.status];
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        <View style={styles.toolbar}>
+          <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={10}>
+            <Text style={styles.toolbarAction}>Back</Text>
+          </Pressable>
+          <Text style={[styles.saveStatus, autosave.status === 'error' && styles.errorStatus]}>
+            {statusText}
+          </Text>
+          <Pressable accessibilityRole="button" onPress={confirmDelete} hitSlop={10}>
+            <Text style={styles.deleteAction}>Delete</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.editorContent}
+        >
+          <TextInput
+            accessibilityLabel="Note title"
+            style={styles.titleInput}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Note title"
+            maxLength={200}
+            returnKeyType="next"
+          />
+          <TextInput
+            accessibilityLabel="Note content"
+            style={styles.contentInput}
+            value={content}
+            onChangeText={setContent}
+            placeholder="Start writing..."
+            multiline
+            textAlignVertical="top"
+          />
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Changes save automatically</Text>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+export default function NoteScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  if (!id || Array.isArray(id)) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.errorTitle}>Invalid note</Text>
+        <Pressable onPress={() => router.replace('/(app)')}>
+          <Text style={styles.link}>Back to notes</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  return <NoteRouteContent id={id} />;
+}
+
+function NoteRouteContent({ id }: { id: string }) {
+  const noteQuery = useNote(id);
+
+  if (noteQuery.isPending) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" color="#2563eb" />
+        <Text style={styles.loadingText}>Opening note...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (noteQuery.isError) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.errorTitle}>Could not open this note</Text>
+        <Text style={styles.errorText}>
+          {noteQuery.error instanceof Error ? noteQuery.error.message : 'Try again.'}
+        </Text>
+        <Pressable onPress={() => void noteQuery.refetch()}>
+          <Text style={styles.link}>Try again</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  return <NoteEditor id={id} note={noteQuery.data} />;
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#fff',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#64748b',
+  },
+  toolbar: {
+    minHeight: 54,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+  },
+  toolbarAction: {
+    color: '#2563eb',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  saveStatus: {
+    color: '#64748b',
+    fontSize: 12,
+  },
+  errorStatus: {
+    color: '#b91c1c',
+  },
+  deleteAction: {
+    color: '#b91c1c',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  editorContent: {
+    flexGrow: 1,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 30,
+  },
+  titleInput: {
+    color: '#111827',
+    fontSize: 28,
+    fontWeight: '700',
+    paddingVertical: 8,
+  },
+  contentInput: {
+    flex: 1,
+    minHeight: 280,
+    marginTop: 14,
+    color: '#334155',
+    fontSize: 16,
+    lineHeight: 25,
+    paddingVertical: 8,
+  },
+  footer: {
+    padding: 12,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e2e8f0',
+  },
+  footerText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  errorTitle: {
+    color: '#991b1b',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  link: {
+    color: '#2563eb',
+    fontWeight: '700',
+  },
+});

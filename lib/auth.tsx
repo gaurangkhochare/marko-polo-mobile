@@ -25,20 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const response = await api<{ user: AuthUser }>('/api/auth/me');
+        setUser(response.user);
+      } catch {
+        setUser(null);
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     void loadUser();
   }, []);
-
-  const loadUser = async () => {
-    try {
-      const response = await api<{ user: AuthUser }>('/api/auth/me');
-      setUser(response.user);
-    } catch {
-      setUser(null);
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const signIn = async (email: string, password: string) => {
     const response = await api<{ user: AuthUser; token?: string }>('/api/auth/login', {
