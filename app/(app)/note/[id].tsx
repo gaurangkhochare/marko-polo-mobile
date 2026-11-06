@@ -1,6 +1,6 @@
 import { useLocalSearchParams, router } from 'expo-router';
-import { useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,13 +11,17 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputSelectionChangeEvent,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MarkdownPreview } from '@/lib/MarkdownPreview';
 import { useNote, useDeleteNote, useUpdateNote } from '@/lib/notes';
 import { useAutosave } from '@/lib/useAutosave';
 import type { Note, NoteDraft } from '@/types';
+
+type EditorMode = 'edit' | 'preview';
 
 function NoteEditor({ id, note }: { id: string; note: Note }) {
   const updateNote = useUpdateNote(id);
@@ -25,6 +29,8 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [tagsText, setTagsText] = useState(note.tags.join(', '));
+  const [mode, setMode] = useState<EditorMode>('edit');
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
 
   const draft = useMemo<NoteDraft>(() => ({ title, content }), [content, title]);
   const autosave = useAutosave(
@@ -84,6 +90,36 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
     }
   };
 
+  const insertMarkdown = (before: string, after = '', placeholder = 'text') => {
+    const start = selection.start;
+    const end = selection.end;
+    const selectedText = content.slice(start, end);
+    const insertedText = selectedText || placeholder;
+    const updatedContent =
+      content.slice(0, start) +
+      before +
+      insertedText +
+      after +
+      content.slice(end);
+
+    setContent(updatedContent);
+    const cursor = start + before.length + insertedText.length + (selectedText ? after.length : 0);
+    setSelection({ start: cursor, end: cursor });
+  };
+
+  const handleSelectionChange = (event: TextInputSelectionChangeEvent) => {
+    setSelection(event.nativeEvent.selection);
+  };
+
+  const editorTools = [
+    { label: 'B', before: '**', after: '**', placeholder: 'bold' },
+    { label: 'I', before: '*', after: '*', placeholder: 'italic' },
+    { label: 'H', before: '## ', placeholder: 'Heading' },
+    { label: '• List', before: '- ', placeholder: 'List item' },
+    { label: 'Code', before: '`', after: '`', placeholder: 'code' },
+    { label: 'Link', before: '[', after: '](https://example.com)', placeholder: 'link text' },
+  ];
+
   const statusText = {
     saved: 'Saved',
     saving: 'Saving...',
@@ -110,6 +146,49 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
           </Pressable>
         </View>
 
+        <View style={styles.modeSelector}>
+          {([
+            { label: 'Edit', value: 'edit' },
+            { label: 'Preview', value: 'preview' },
+          ] as const).map((option) => (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === option.value }}
+              onPress={() => setMode(option.value)}
+              style={[styles.modeButton, mode === option.value && styles.activeModeButton]}
+            >
+              <Text style={[styles.modeText, mode === option.value && styles.activeModeText]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {mode !== 'preview' && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.formatToolbar}
+            contentContainerStyle={styles.formatTools}
+            keyboardShouldPersistTaps="always"
+          >
+            {editorTools.map((tool) => (
+              <Pressable
+                key={tool.label}
+                accessibilityRole="button"
+                accessibilityLabel={`Insert ${tool.label} Markdown`}
+                onPress={() =>
+                  insertMarkdown(tool.before, tool.after, tool.placeholder)
+                }
+                style={styles.formatButton}
+              >
+                <Text style={styles.formatButtonText}>{tool.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.editorContent}
@@ -123,15 +202,24 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
             maxLength={200}
             returnKeyType="next"
           />
-          <TextInput
-            accessibilityLabel="Note content"
-            style={styles.contentInput}
-            value={content}
-            onChangeText={setContent}
-            placeholder="Start writing..."
-            multiline
-            textAlignVertical="top"
-          />
+          {mode !== 'preview' && (
+            <TextInput
+              accessibilityLabel="Note content"
+              style={styles.contentInput}
+              value={content}
+              onChangeText={setContent}
+              onSelectionChange={handleSelectionChange}
+              selection={selection}
+              placeholder="Start writing..."
+              multiline
+              textAlignVertical="top"
+            />
+          )}
+          {mode !== 'edit' && (
+            <View style={styles.previewPanel}>
+              <MarkdownPreview content={content} />
+            </View>
+          )}
           <View style={styles.organizationSection}>
             <Text style={styles.sectionLabel}>Tags</Text>
             <TextInput
@@ -260,6 +348,57 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  modeSelector: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    marginVertical: 10,
+    padding: 3,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+  },
+  modeButton: {
+    minWidth: 76,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+  },
+  activeModeButton: {
+    backgroundColor: '#2563eb',
+  },
+  modeText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  activeModeText: {
+    color: '#fff',
+  },
+  formatToolbar: {
+    maxHeight: 44,
+    flexGrow: 0,
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+  },
+  formatTools: {
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  formatButton: {
+    minWidth: 38,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+  },
+  formatButtonText: {
+    color: '#1d4ed8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   saveStatus: {
     color: '#64748b',
     fontSize: 12,
@@ -285,13 +424,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   contentInput: {
-    flex: 1,
     minHeight: 280,
+    flex: 1,
     marginTop: 14,
     color: '#334155',
     fontSize: 16,
     lineHeight: 25,
     paddingVertical: 8,
+  },
+  previewPanel: {
+    marginTop: 14,
+    minHeight: 280,
   },
   organizationSection: {
     marginTop: 24,
