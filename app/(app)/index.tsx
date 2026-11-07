@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -15,68 +14,92 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppIcon } from '@/components/AppIcon';
 import { useAuth } from '@/lib/auth';
+import { selectionHaptic, successHaptic } from '@/lib/haptics';
+import { ApiError } from '@/lib/api';
 import {
   useCreateNote,
+  useDeleteNote,
   useNoteTags,
   useNotes,
   useUpdateNote,
 } from '@/lib/notes';
+import { nextThemePreference, useTheme } from '@/lib/theme';
 import type { Note, NoteSortOption, NoteViewMode } from '@/types';
 
 function NoteCard({ note }: { note: Note }) {
+  const { colors } = useTheme();
   const updateNote = useUpdateNote(note._id);
+  const deleteNote = useDeleteNote();
 
   const updateFlag = async (field: 'isPinned' | 'isArchived') => {
     try {
       await updateNote.mutateAsync({ [field]: !note[field] });
-      await Haptics.selectionAsync();
+      await selectionHaptic();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update this note.';
       Alert.alert('Update failed', message);
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert('Delete note?', 'This note will be permanently deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void deleteNote.mutateAsync(note._id)
+            .then(() => successHaptic())
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : 'Could not delete the note.';
+              Alert.alert('Delete failed', message);
+            });
+        },
+      },
+    ]);
+  };
+
   return (
-    <View style={styles.noteCard}>
+    <View style={[styles.noteCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Pressable
         accessibilityRole="button"
         onPress={() => router.push({ pathname: '/(app)/note/[id]', params: { id: note._id } })}
         style={({ pressed }) => [styles.noteBody, pressed && styles.pressed]}
       >
         <View style={styles.noteTitleRow}>
-          <Text numberOfLines={1} style={styles.noteTitle}>
+          <Text numberOfLines={1} style={[styles.noteTitle, { color: colors.text }]}>
             {note.title}
           </Text>
-          {note.isPinned && <Text style={styles.pinIndicator}>PINNED</Text>}
+          {note.isPinned && <AppIcon name="pin" size={20} color={colors.pinText} />}
         </View>
-        <Text numberOfLines={3} style={styles.noteExcerpt}>
+        <Text numberOfLines={3} style={[styles.noteExcerpt, { color: colors.secondaryText }]}>
           {note.content.trim() || 'No content yet'}
         </Text>
         {note.tags.length > 0 && (
           <View style={styles.noteTags}>
             {note.tags.map((tag) => (
-              <Text key={tag} style={styles.noteTag}>
+              <Text key={tag} style={[styles.noteTag, { backgroundColor: colors.tagBackground, color: colors.tagText }]}>
                 {tag}
               </Text>
             ))}
           </View>
         )}
-        <Text style={styles.noteDate}>
+        <Text style={[styles.noteDate, { color: colors.muted }]}>
           Updated {new Date(note.updatedAt).toLocaleDateString()}
         </Text>
       </Pressable>
-      <View style={styles.noteActions}>
+      <View style={[styles.noteActions, { borderTopColor: colors.border }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={note.isPinned ? 'Unpin note' : 'Pin note'}
           onPress={() => void updateFlag('isPinned')}
           disabled={updateNote.isPending}
           hitSlop={8}
+          style={styles.inlineAction}
         >
-          <Text style={[styles.noteAction, note.isPinned && styles.activeAction]}>
-            {note.isPinned ? 'Unpin' : 'Pin'}
-          </Text>
+          <AppIcon name={note.isPinned ? 'unpin' : 'pin'} size={20} color={note.isPinned ? colors.pinText : colors.secondaryText} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -84,8 +107,19 @@ function NoteCard({ note }: { note: Note }) {
           onPress={() => void updateFlag('isArchived')}
           disabled={updateNote.isPending}
           hitSlop={8}
+          style={styles.inlineAction}
         >
-          <Text style={styles.noteAction}>{note.isArchived ? 'Unarchive' : 'Archive'}</Text>
+          <AppIcon name={note.isArchived ? 'unarchive' : 'archive'} size={20} color={colors.secondaryText} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete note"
+          onPress={confirmDelete}
+          disabled={updateNote.isPending || deleteNote.isPending}
+          hitSlop={8}
+          style={styles.inlineAction}
+        >
+          <AppIcon name="delete" size={20} color={colors.danger} />
         </Pressable>
       </View>
     </View>
@@ -106,6 +140,7 @@ const sortOptions: { label: string; value: NoteSortOption }[] = [
 
 export default function NotesHomeScreen() {
   const { user, signOut } = useAuth();
+  const { colors, preference, setPreference } = useTheme();
   const [view, setView] = useState<NoteViewMode>('all');
   const [sort, setSort] = useState<NoteSortOption>('updatedAt_desc');
   const [search, setSearch] = useState('');
@@ -143,28 +178,64 @@ export default function NotesHomeScreen() {
     router.replace('/login');
   };
 
+  const handleThemeToggle = async () => {
+    try {
+      await setPreference(nextThemePreference(preference));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save your theme preference.';
+      Alert.alert('Theme not saved', message);
+    }
+  };
+
+  const themeIcon = preference === 'system'
+    ? 'themeSystem'
+    : preference === 'light'
+      ? 'themeLight'
+      : 'themeDark';
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>MARKO POLO</Text>
-          <Text style={styles.heading}>Your notes</Text>
-          <Text style={styles.welcome}>Welcome, {user?.name ?? 'friend'}</Text>
+          <Text style={[styles.eyebrow, { color: colors.accent }]}>MARKO POLO</Text>
+          <Text style={[styles.heading, { color: colors.text }]}>Your notes</Text>
+          <Text style={[styles.welcome, { color: colors.muted }]}>Welcome, {user?.name ?? 'friend'}</Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={handleSignOut} hitSlop={10}>
-          <Text style={styles.signOut}>Sign out</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Theme: ${preference}. Change theme`}
+            onPress={() => void handleThemeToggle()}
+            hitSlop={10}
+            style={styles.headerIconButton}
+          >
+            <AppIcon name={themeIcon} color={colors.secondaryText} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+            onPress={handleSignOut}
+            hitSlop={10}
+            style={styles.headerIconButton}
+          >
+            <AppIcon name="logout" color={colors.secondaryText} />
+          </Pressable>
+        </View>
       </View>
 
-      <TextInput
-        style={styles.searchInput}
-        value={search}
-        onChangeText={setSearch}
-        placeholder="Search notes"
-        accessibilityLabel="Search notes"
-        returnKeyType="search"
-        clearButtonMode="while-editing"
-      />
+      <View style={[styles.searchBox, { backgroundColor: colors.field, borderColor: colors.border }]}>
+        <AppIcon name="search" color={colors.muted} size={19} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search notes"
+          placeholderTextColor={colors.muted}
+          accessibilityLabel="Search notes"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
 
       <ScrollView
         horizontal
@@ -181,9 +252,12 @@ export default function NotesHomeScreen() {
               setView(item.value);
               if (item.value === 'archived') setSelectedTag(undefined);
             }}
-            style={[styles.filterChip, view === item.value && styles.selectedFilterChip]}
+            style={[
+              styles.filterChip,
+              { backgroundColor: view === item.value ? colors.accent : colors.chip },
+            ]}
           >
-            <Text style={[styles.filterChipText, view === item.value && styles.selectedFilterText]}>
+            <Text style={[styles.filterChipText, { color: view === item.value ? colors.accentText : colors.secondaryText }]}>
               {item.label}
             </Text>
           </Pressable>
@@ -198,28 +272,28 @@ export default function NotesHomeScreen() {
       >
         {view !== 'archived' && (
           <>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: !selectedTag }}
-            onPress={() => setSelectedTag(undefined)}
-            style={[styles.tagChip, !selectedTag && styles.selectedTagChip]}
-          >
-            <Text style={[styles.tagChipText, !selectedTag && styles.selectedFilterText]}>All tags</Text>
-          </Pressable>
-          {tagsQuery.data?.map((tag) => (
             <Pressable
-              key={tag}
               accessibilityRole="button"
-              accessibilityState={{ selected: selectedTag === tag }}
-              onPress={() => setSelectedTag(selectedTag === tag ? undefined : tag)}
-              style={[styles.tagChip, selectedTag === tag && styles.selectedTagChip]}
+              accessibilityState={{ selected: !selectedTag }}
+              onPress={() => setSelectedTag(undefined)}
+              style={[styles.tagChip, { backgroundColor: !selectedTag ? colors.tagText : colors.chip }]}
             >
-              <Text style={[styles.tagChipText, selectedTag === tag && styles.selectedFilterText]}>
-                {tag}
-              </Text>
+              <Text style={[styles.tagChipText, { color: !selectedTag ? colors.accentText : colors.secondaryText }]}>All tags</Text>
             </Pressable>
-          ))}
-          {tagsQuery.isError && <Text style={styles.inlineError}>Tags unavailable</Text>}
+            {tagsQuery.data?.map((tag) => (
+              <Pressable
+                key={tag}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedTag === tag }}
+                onPress={() => setSelectedTag(selectedTag === tag ? undefined : tag)}
+                style={[styles.tagChip, { backgroundColor: selectedTag === tag ? colors.tagText : colors.chip }]}
+              >
+                <Text style={[styles.tagChipText, { color: selectedTag === tag ? colors.accentText : colors.secondaryText }]}>
+                  {tag}
+                </Text>
+              </Pressable>
+            ))}
+            {tagsQuery.isError && <Text style={[styles.inlineError, { color: colors.danger }]}>Tags unavailable</Text>}
           </>
         )}
       </ScrollView>
@@ -232,28 +306,33 @@ export default function NotesHomeScreen() {
       >
         {sortOptions.map((item) => (
           <Pressable key={item.value} onPress={() => setSort(item.value)} hitSlop={6}>
-            <Text style={[styles.sortOption, sort === item.value && styles.activeSortOption]}>
+            <Text style={[styles.sortOption, { color: sort === item.value ? colors.accent : colors.muted }, sort === item.value && styles.activeSortOption]}>
               {item.label}
             </Text>
           </Pressable>
         ))}
       </ScrollView>
 
-      {notesQuery.isPending ? (
+      {notesQuery.isPending && !notesQuery.data ? (
         <View style={styles.listMessage}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Loading notes...</Text>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={[styles.loadingText, { color: colors.muted }]}>Loading notes...</Text>
         </View>
-      ) : notesQuery.isError ? (
-        <View style={styles.messageCard}>
-          <Text style={styles.errorTitle}>Could not load notes</Text>
+      ) : notesQuery.isError && !notesQuery.data ? (
+        <View style={[styles.messageCard, { backgroundColor: colors.surface }]}>
+          <AppIcon name="refresh" color={colors.danger} size={28} />
+          <Text style={[styles.errorTitle, { color: colors.danger }]}>
+            {notesQuery.error instanceof ApiError && notesQuery.error.status === 0
+              ? 'You appear to be offline'
+              : 'Could not load notes'}
+          </Text>
           <Text style={styles.errorText}>
             {notesQuery.error instanceof Error
               ? notesQuery.error.message
               : 'Check your connection and try again.'}
           </Text>
           <Pressable style={styles.secondaryButton} onPress={() => void notesQuery.refetch()}>
-            <Text style={styles.secondaryButtonText}>Try again</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.accent }]}>Try again</Text>
           </Pressable>
         </View>
       ) : (
@@ -263,19 +342,34 @@ export default function NotesHomeScreen() {
           keyExtractor={(note) => note._id}
           renderItem={({ item }) => <NoteCard note={item} />}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            notesQuery.isError ? (
+              <View style={[styles.offlineBanner, { backgroundColor: colors.chip }]}>
+                <AppIcon name="refresh" color={colors.danger} size={18} />
+                <Text style={[styles.offlineBannerText, { color: colors.secondaryText }]}>
+                  {notesQuery.error instanceof ApiError && notesQuery.error.status === 0
+                    ? 'Offline — showing your last loaded notes.'
+                    : 'Could not refresh notes. Showing the last loaded results.'}
+                </Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Retry loading notes" onPress={() => void notesQuery.refetch()}>
+                  <AppIcon name="refresh" color={colors.accent} size={18} />
+                </Pressable>
+              </View>
+            ) : undefined
+          }
           refreshControl={
             <RefreshControl
               refreshing={notesQuery.isRefetching}
               onRefresh={() => void notesQuery.refetch()}
-              tintColor="#2563eb"
+              tintColor={colors.accent}
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
                 {search || selectedTag ? 'No matching notes' : 'No notes here'}
               </Text>
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyText, { color: colors.muted }]}>
                 {search || selectedTag
                   ? 'Try a different search or tag.'
                   : view === 'archived'
@@ -289,12 +383,14 @@ export default function NotesHomeScreen() {
 
       <Pressable
         accessibilityRole="button"
-        style={[styles.createButton, createNote.isPending && styles.disabledButton]}
+        accessibilityLabel="Create a new note"
+        style={[styles.createButton, { backgroundColor: colors.accent }, createNote.isPending && styles.disabledButton]}
         onPress={handleCreate}
         disabled={createNote.isPending}
       >
-        <Text style={styles.createButtonText}>
-          {createNote.isPending ? 'Creating...' : '＋  New note'}
+        <AppIcon name="add" color={colors.accentText} />
+        <Text style={[styles.createButtonText, { color: colors.accentText }]}>
+          {createNote.isPending ? 'Creating...' : 'New note'}
         </Text>
       </Pressable>
     </SafeAreaView>
@@ -324,6 +420,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIconButton: {
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   eyebrow: {
     color: '#2563eb',
     fontSize: 11,
@@ -345,17 +452,21 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontWeight: '600',
   },
-  searchInput: {
+  searchBox: {
     height: 52,
     marginHorizontal: 18,
     marginBottom: 10,
     paddingHorizontal: 14,
-    paddingVertical: 11,
     borderRadius: 12,
-    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#e5eaf1',
-    color: '#111827',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    paddingVertical: 11,
     fontSize: 15,
   },
   filterScroll: {
@@ -457,7 +568,7 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
     color: '#111827',
   },
@@ -482,7 +593,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    fontSize: 11,
+    fontSize: 12,
   },
   noteDate: {
     color: '#94a3b8',
@@ -497,13 +608,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 20,
   },
-  noteAction: {
-    color: '#475569',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  activeAction: {
-    color: '#a16207',
+  inlineAction: {
+    width: 36,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -534,6 +643,18 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#64748b',
   },
+  offlineBanner: {
+    marginBottom: 2,
+    padding: 12,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: 12,
+  },
   secondaryButton: {
     alignSelf: 'flex-start',
     paddingVertical: 8,
@@ -550,7 +671,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 14,
     paddingVertical: 15,
-    backgroundColor: '#2563eb',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
   disabledButton: {
     opacity: 0.6,

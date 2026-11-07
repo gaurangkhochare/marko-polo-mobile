@@ -11,10 +11,13 @@ import {
   View,
 } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 
 export default function RegisterScreen() {
   const { signUp } = useAuth();
+  const { colors } = useTheme();
   const [name, setName] = useState("Ada Lovelace");
   const [email, setEmail] = useState("ada@example.com");
   const [password, setPassword] = useState("Password123!");
@@ -47,48 +50,52 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>Create account</Text>
-        <Text style={styles.subtitle}>Start organizing notes on the go</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Create account</Text>
+        <Text style={[styles.subtitle, { color: colors.secondaryText }]}>Start organizing notes on the go</Text>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.field, borderColor: colors.border, color: colors.text }]}
           value={name}
           onChangeText={setName}
           placeholder="Full name"
+          placeholderTextColor={colors.muted}
         />
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.field, borderColor: colors.border, color: colors.text }]}
           value={email}
           onChangeText={setEmail}
           placeholder="Email"
+          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
         />
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.field, borderColor: colors.border, color: colors.text }]}
           value={password}
           onChangeText={setPassword}
           placeholder="Password"
+          placeholderTextColor={colors.muted}
           secureTextEntry
         />
 
         <Pressable
-          style={[styles.button, submitting && styles.buttonDisabled]}
+          style={[styles.button, { backgroundColor: colors.accent }, submitting && styles.buttonDisabled]}
           onPress={handleSubmit}
           disabled={submitting}
         >
-          <Text style={styles.buttonText}>
+          <AppIcon name="add" size={18} color={colors.accentText} />
+          <Text style={[styles.buttonText, { color: colors.accentText }]}>
             {submitting ? "Creating account..." : "Create account"}
           </Text>
         </Pressable>
 
         <Link href="/login" asChild>
           <Pressable>
-            <Text style={styles.linkText}>
+            <Text style={[styles.linkText, { color: colors.accent }]}>
               Already have an account? Sign in
             </Text>
           </Pressable>
@@ -140,6 +147,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
   },
   buttonDisabled: {
     opacity: 0.6,

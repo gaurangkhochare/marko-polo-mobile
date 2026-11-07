@@ -1,5 +1,4 @@
 import { useLocalSearchParams, router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,14 +15,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppIcon } from '@/components/AppIcon';
 import { MarkdownPreview } from '@/lib/MarkdownPreview';
+import { selectionHaptic, successHaptic } from '@/lib/haptics';
 import { useNote, useDeleteNote, useUpdateNote } from '@/lib/notes';
+import { useTheme } from '@/lib/theme';
 import { useAutosave } from '@/lib/useAutosave';
 import type { Note, NoteDraft } from '@/types';
 
 type EditorMode = 'edit' | 'preview';
 
 function NoteEditor({ id, note }: { id: string; note: Note }) {
+  const { colors } = useTheme();
   const updateNote = useUpdateNote(id);
   const deleteNote = useDeleteNote();
   const [title, setTitle] = useState(note.title);
@@ -48,6 +51,7 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
           void (async () => {
             await autosave.cancel();
             await deleteNote.mutateAsync(id);
+            await successHaptic();
             router.replace('/(app)');
           })().catch((error: unknown) => {
             const message = error instanceof Error ? error.message : 'Could not delete the note.';
@@ -83,7 +87,7 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
   const toggleNoteFlag = async (field: 'isPinned' | 'isArchived') => {
     try {
       await updateNote.mutateAsync({ [field]: !note[field] });
-      await Haptics.selectionAsync();
+      await selectionHaptic();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update this note.';
       Alert.alert('Update failed', message);
@@ -112,13 +116,13 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
   };
 
   const editorTools = [
-    { label: 'B', before: '**', after: '**', placeholder: 'bold' },
-    { label: 'I', before: '*', after: '*', placeholder: 'italic' },
-    { label: 'H', before: '## ', placeholder: 'Heading' },
-    { label: '• List', before: '- ', placeholder: 'List item' },
-    { label: 'Code', before: '`', after: '`', placeholder: 'code' },
-    { label: 'Link', before: '[', after: '](https://example.com)', placeholder: 'link text' },
-  ];
+    { label: 'Bold', icon: 'bold', before: '**', after: '**', placeholder: 'bold' },
+    { label: 'Italic', icon: 'italic', before: '*', after: '*', placeholder: 'italic' },
+    { label: 'Heading', icon: 'heading', before: '## ', placeholder: 'Heading' },
+    { label: 'List', icon: 'list', before: '- ', placeholder: 'List item' },
+    { label: 'Code', icon: 'code', before: '`', after: '`', placeholder: 'code' },
+    { label: 'Link', icon: 'link', before: '[', after: '](https://example.com)', placeholder: 'link text' },
+  ] as const;
 
   const statusText = {
     saved: 'Saved',
@@ -128,25 +132,25 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
   }[autosave.status];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        <View style={styles.toolbar}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={10}>
-            <Text style={styles.toolbarAction}>Back</Text>
+        <View style={[styles.toolbar, { borderBottomColor: colors.border }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to notes" onPress={() => router.back()} hitSlop={10}>
+            <AppIcon name="back" color={colors.accent} />
           </Pressable>
-          <Text style={[styles.saveStatus, autosave.status === 'error' && styles.errorStatus]}>
+          <Text style={[styles.saveStatus, { color: autosave.status === 'error' ? colors.danger : colors.muted }]}>
             {statusText}
           </Text>
-          <Pressable accessibilityRole="button" onPress={confirmDelete} hitSlop={10}>
-            <Text style={styles.deleteAction}>Delete</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Delete note" onPress={confirmDelete} hitSlop={10}>
+            <AppIcon name="delete" color={colors.danger} />
           </Pressable>
         </View>
 
-        <View style={styles.modeSelector}>
+        <View style={[styles.modeSelector, { backgroundColor: colors.chip }]}>
           {([
             { label: 'Edit', value: 'edit' },
             { label: 'Preview', value: 'preview' },
@@ -156,9 +160,10 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
               accessibilityRole="button"
               accessibilityState={{ selected: mode === option.value }}
               onPress={() => setMode(option.value)}
-              style={[styles.modeButton, mode === option.value && styles.activeModeButton]}
+              style={[styles.modeButton, mode === option.value && { backgroundColor: colors.accent }]}
             >
-              <Text style={[styles.modeText, mode === option.value && styles.activeModeText]}>
+              <AppIcon name={option.value === 'edit' ? 'edit' : 'preview'} size={16} color={mode === option.value ? colors.accentText : colors.secondaryText} />
+              <Text style={[styles.modeText, { color: mode === option.value ? colors.accentText : colors.secondaryText }]}>
                 {option.label}
               </Text>
             </Pressable>
@@ -169,7 +174,7 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.formatToolbar}
+            style={[styles.formatToolbar, { borderBottomColor: colors.border }]}
             contentContainerStyle={styles.formatTools}
             keyboardShouldPersistTaps="always"
           >
@@ -179,11 +184,15 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
                 accessibilityRole="button"
                 accessibilityLabel={`Insert ${tool.label} Markdown`}
                 onPress={() =>
-                  insertMarkdown(tool.before, tool.after, tool.placeholder)
+                  insertMarkdown(
+                    tool.before,
+                    'after' in tool ? tool.after : '',
+                    tool.placeholder,
+                  )
                 }
-                style={styles.formatButton}
+                style={[styles.formatButton, { backgroundColor: colors.chip }]}
               >
-                <Text style={styles.formatButtonText}>{tool.label}</Text>
+                <AppIcon name={tool.icon} size={18} color={colors.accent} />
               </Pressable>
             ))}
           </ScrollView>
@@ -195,22 +204,24 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
         >
           <TextInput
             accessibilityLabel="Note title"
-            style={styles.titleInput}
+            style={[styles.titleInput, { color: colors.text }]}
             value={title}
             onChangeText={setTitle}
             placeholder="Note title"
+            placeholderTextColor={colors.muted}
             maxLength={200}
             returnKeyType="next"
           />
           {mode !== 'preview' && (
             <TextInput
               accessibilityLabel="Note content"
-              style={styles.contentInput}
+              style={[styles.contentInput, { color: colors.secondaryText }]}
               value={content}
               onChangeText={setContent}
               onSelectionChange={handleSelectionChange}
               selection={selection}
               placeholder="Start writing..."
+              placeholderTextColor={colors.muted}
               multiline
               textAlignVertical="top"
             />
@@ -220,28 +231,34 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
               <MarkdownPreview content={content} />
             </View>
           )}
-          <View style={styles.organizationSection}>
-            <Text style={styles.sectionLabel}>Tags</Text>
+          <View style={[styles.organizationSection, { borderTopColor: colors.border }]}>
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>Tags</Text>
             <TextInput
               accessibilityLabel="Note tags"
-              style={styles.tagsInput}
+              style={[styles.tagsInput, { backgroundColor: colors.field, borderColor: colors.border, color: colors.text }]}
               value={tagsText}
               onChangeText={setTagsText}
               onBlur={() => void saveTags()}
               placeholder="Add tags separated by commas"
+              placeholderTextColor={colors.muted}
               autoCapitalize="none"
               returnKeyType="done"
             />
-            <Text style={styles.helperText}>Separate tags with commas. Changes save when you leave this field.</Text>
+            <Text style={[styles.helperText, { color: colors.muted }]}>Separate tags with commas. Changes save when you leave this field.</Text>
             <View style={styles.flagActions}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ selected: note.isPinned }}
                 onPress={() => void toggleNoteFlag('isPinned')}
                 disabled={updateNote.isPending}
-                style={[styles.flagButton, note.isPinned && styles.activeFlagButton]}
+                style={[
+                  styles.flagButton,
+                  { borderColor: colors.border },
+                  note.isPinned && { backgroundColor: colors.pinBackground, borderColor: colors.pinText },
+                ]}
               >
-                <Text style={[styles.flagButtonText, note.isPinned && styles.activeFlagText]}>
+                <AppIcon name="pin" size={16} color={note.isPinned ? colors.pinText : colors.secondaryText} />
+                <Text style={[styles.flagButtonText, { color: note.isPinned ? colors.pinText : colors.secondaryText }]}>
                   {note.isPinned ? 'Pinned' : 'Pin note'}
                 </Text>
               </Pressable>
@@ -250,9 +267,14 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
                 accessibilityState={{ selected: note.isArchived }}
                 onPress={() => void toggleNoteFlag('isArchived')}
                 disabled={updateNote.isPending}
-                style={[styles.flagButton, note.isArchived && styles.activeArchiveButton]}
+                style={[
+                  styles.flagButton,
+                  { borderColor: colors.border },
+                  note.isArchived && { backgroundColor: colors.archiveBackground, borderColor: colors.accent },
+                ]}
               >
-                <Text style={[styles.flagButtonText, note.isArchived && styles.activeArchiveText]}>
+                <AppIcon name={note.isArchived ? 'unarchive' : 'archive'} size={16} color={colors.accent} />
+                <Text style={[styles.flagButtonText, { color: colors.secondaryText }]}>
                   {note.isArchived ? 'Archived' : 'Archive note'}
                 </Text>
               </Pressable>
@@ -260,8 +282,8 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Changes save automatically</Text>
+        <View style={[styles.footer, { borderTopColor: colors.border }]}>
+          <Text style={[styles.footerText, { color: colors.muted }]}>Changes save automatically</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -270,13 +292,14 @@ function NoteEditor({ id, note }: { id: string; note: Note }) {
 
 export default function NoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { colors } = useTheme();
 
   if (!id || Array.isArray(id)) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorTitle}>Invalid note</Text>
-        <Pressable onPress={() => router.replace('/(app)')}>
-          <Text style={styles.link}>Back to notes</Text>
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.danger }]}>Invalid note</Text>
+        <Pressable accessibilityRole="button" onPress={() => router.replace('/(app)')}>
+          <Text style={[styles.link, { color: colors.accent }]}>Back to notes</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -287,25 +310,26 @@ export default function NoteScreen() {
 
 function NoteRouteContent({ id }: { id: string }) {
   const noteQuery = useNote(id);
+  const { colors } = useTheme();
 
   if (noteQuery.isPending) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={styles.loadingText}>Opening note...</Text>
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.loadingText, { color: colors.muted }]}>Opening note...</Text>
       </SafeAreaView>
     );
   }
 
   if (noteQuery.isError) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorTitle}>Could not open this note</Text>
-        <Text style={styles.errorText}>
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.danger }]}>Could not open this note</Text>
+        <Text style={[styles.errorText, { color: colors.muted }]}>
           {noteQuery.error instanceof Error ? noteQuery.error.message : 'Try again.'}
         </Text>
-        <Pressable onPress={() => void noteQuery.refetch()}>
-          <Text style={styles.link}>Try again</Text>
+        <Pressable accessibilityRole="button" onPress={() => void noteQuery.refetch()}>
+          <Text style={[styles.link, { color: colors.accent }]}>Try again</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -362,6 +386,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 9,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
   },
   activeModeButton: {
     backgroundColor: '#2563eb',
@@ -472,6 +499,9 @@ const styles = StyleSheet.create({
     borderColor: '#cbd5e1',
     paddingHorizontal: 14,
     paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   activeFlagButton: {
     borderColor: '#facc15',

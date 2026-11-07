@@ -4,6 +4,7 @@ import Markdown, { MarkdownIt, type RenderRules } from 'react-native-markdown-di
 import taskLists from 'markdown-it-task-lists';
 
 import { openSafeLink } from '@/lib/markdown';
+import { useTheme } from '@/lib/theme';
 
 const markdownIt = MarkdownIt({ html: false, typographer: true }).use(taskLists);
 
@@ -134,14 +135,40 @@ const onLinkPress = (url: string) => {
 };
 
 export function MarkdownPreview({ content }: { content: string }) {
+  const { colors } = useTheme();
   const source = useMemo(() => content || '_Nothing to preview yet._', [content]);
+  const themedMarkdownStyles = useMemo(
+    () => ({
+      ...markdownStyles,
+      body: { ...markdownStyles.body, color: colors.secondaryText },
+      heading1: { ...markdownStyles.heading1, color: colors.text },
+      heading2: { ...markdownStyles.heading2, color: colors.text },
+      heading3: { ...markdownStyles.heading3, color: colors.text },
+      blockquote: {
+        ...markdownStyles.blockquote,
+        borderLeftColor: colors.accent,
+        backgroundColor: colors.field,
+      },
+      code_inline: {
+        ...markdownStyles.code_inline,
+        backgroundColor: colors.chip,
+        color: colors.accent,
+      },
+      table: { ...markdownStyles.table, borderColor: colors.border },
+      th: { ...markdownStyles.th, backgroundColor: colors.chip },
+      td: { ...markdownStyles.td, borderColor: colors.border },
+      link: { ...markdownStyles.link, color: colors.accent },
+      hr: { ...markdownStyles.hr, backgroundColor: colors.border },
+    }),
+    [colors],
+  );
 
   return (
     <View style={styles.container}>
       <Markdown
         markdownit={markdownIt}
         rules={renderRules}
-        style={markdownStyles}
+        style={themedMarkdownStyles}
         onLinkPress={onLinkPress}
       >
         {source}

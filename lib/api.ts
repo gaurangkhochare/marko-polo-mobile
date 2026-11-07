@@ -23,10 +23,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch {
+    throw new ApiError(
+      'Unable to reach the server. Check your internet connection and try again.',
+      0,
+    );
+  }
 
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
